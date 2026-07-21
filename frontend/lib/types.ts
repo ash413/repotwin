@@ -57,6 +57,7 @@ export interface InvestigateResponse {
   extracted_entity?: string;
   resolved_node?: string;
   narrative?: string;
+  narrative_source?: "gpt-5.6" | "deterministic";
   report?: ImpactReport;
   error?: string;
 }

@@ -110,8 +110,15 @@ export default function InvestigationPanel({
             </div>
 
             {result.narrative && (
-              <div className="text-sm text-text/90 leading-relaxed whitespace-pre-line">
-                {result.narrative}
+              <div>
+                <div className="mb-2 text-[10px] font-mono uppercase tracking-wider text-muted">
+                  {result.narrative_source === "gpt-5.6"
+                    ? "Narrated by GPT-5.6 · grounded in RepoTwin graph"
+                    : "Deterministic graph analysis"}
+                </div>
+                <div className="text-sm text-text/90 leading-relaxed whitespace-pre-line">
+                  {result.narrative}
+                </div>
               </div>
             )}
 

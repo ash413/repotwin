@@ -3,5 +3,5 @@ uvicorn[standard]
 networkx
 pyyaml
 pydantic
-anthropic
+openai
 python-multipart

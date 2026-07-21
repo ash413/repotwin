@@ -1,7 +1,8 @@
-"""Turns a natural-language question into a graph query, runs impact analysis,
-and (if ANTHROPIC_API_KEY is set) asks Claude to narrate the findings in plain
-English. Falls back to a template-based narrative if no key is configured,
-so the tool works with zero external dependencies for the hackathon demo.
+"""Turn a natural-language question into an evidence-backed graph query.
+
+The dependency graph and risk score are always computed locally. When an OpenAI
+API key is configured, GPT-5.6 turns that ground truth into a concise migration
+brief; otherwise RepoTwin returns the same facts with a deterministic template.
 """
 
 import os
@@ -50,13 +51,14 @@ def _template_narrative(report: ImpactReport) -> str:
     return "\n\n".join(lines)
 
 
-def _claude_narrative(report: ImpactReport, question: str) -> Optional[str]:
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
+def _openai_narrative(report: ImpactReport, question: str) -> Optional[str]:
+    api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
         return None
     try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
+        from openai import OpenAI
+
+        client = OpenAI(api_key=api_key)
         payload = {
             "target": report.target,
             "target_type": report.target_type,
@@ -66,22 +68,23 @@ def _claude_narrative(report: ImpactReport, question: str) -> Optional[str]:
             "risk_level": report.risk_level,
             "risk_reasons": report.risk_reasons,
         }
-        msg = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=600,
-            messages=[{
-                "role": "user",
-                "content": (
-                    f"An engineer asked: \"{question}\"\n\n"
-                    f"Here is the graph-derived impact data (ground truth, do not contradict it):\n"
-                    f"{json.dumps(payload, indent=2)}\n\n"
-                    "Write a concise, engineer-facing explanation (under 180 words) of what breaks, "
-                    "why, and what to do about it. Do not invent modules or evidence not listed above."
-                ),
-            }],
+        response = client.responses.create(
+            model=os.environ.get("OPENAI_MODEL", "gpt-5.6-sol"),
+            reasoning={"effort": "none"},
+            max_output_tokens=600,
+            instructions=(
+                "You are RepoTwin's change-impact narrator. Treat the supplied graph analysis as "
+                "ground truth. Never invent modules, routes, evidence, or risks. Explain the blast "
+                "radius and give an actionable migration plan in under 180 words."
+            ),
+            input=(
+                f"Engineer question: {question}\n\n"
+                f"Graph-derived impact report:\n{json.dumps(payload, indent=2)}"
+            ),
         )
-        return "".join(b.text for b in msg.content if b.type == "text")
+        return response.output_text.strip() or None
     except Exception:
+        # The deterministic report remains available during API/network failures.
         return None
 
 
@@ -96,13 +99,15 @@ def answer_question(g, question: str) -> dict:
                 "question": question, "extracted_entity": entity}
 
     report = analyze_impact(g, node_id)
-    narrative = _claude_narrative(report, question) or _template_narrative(report)
+    ai_narrative = _openai_narrative(report, question)
+    narrative = ai_narrative or _template_narrative(report)
 
     return {
         "question": question,
         "extracted_entity": entity,
         "resolved_node": node_id,
         "narrative": narrative,
+        "narrative_source": "gpt-5.6" if ai_narrative else "deterministic",
         "report": {
             "target": report.target,
             "target_type": report.target_type,
