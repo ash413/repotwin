@@ -1,0 +1,38 @@
+version: "3.9"
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://user:pass@postgres:5432/appdb
+      - REDIS_URL=redis://redis:6379/0
+      - STRIPE_API_KEY=${STRIPE_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+    depends_on:
+      - postgres
+      - redis
+
+  worker:
+    build: .
+    command: celery -A app.tasks.worker.celery_app worker --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql://user:pass@postgres:5432/appdb
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - postgres
+      - redis
+
+  postgres:
+    image: postgres:15
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=pass
+      - POSTGRES_DB=appdb
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
